@@ -1,9 +1,23 @@
-# Automatic-Patch-Tuesday-with-Intune
-
 # Patch Tuesday Automation - Intune
 
 ## Objectif
 Déployer les KB de Patch Tuesday de manière **granulaire** sur Windows 10/11 via Intune Win32 App.
+
+## Arborescence complète
+
+```
+PatchTuesday-Intune/
+│
+├─ Scripts/
+│   ├─ Generate-KBMap.ps1      # Script admin pour télécharger les MSU et générer kbmap.csv
+│   └─ Install-KB.ps1          # Script client Intune pour installer le KB correspondant
+│
+├─ KBs/                        # MSU téléchargés ici par Generate-KBMap.ps1
+├─ kbmap.csv                    # Généré automatiquement
+├─ PatchTuesday.intunewin       # Package final Intune
+└─ README.md                    # Instructions user-friendly
+```
+
 
 ## Contenu du package
 - `Install-KB.ps1` : script client qui installe le KB correspondant à la build
@@ -22,6 +36,11 @@ Déployer les KB de Patch Tuesday de manière **granulaire** sur Windows 10/11 v
 ### Client (Intune)
 - `Install-KB.ps1` détecte automatiquement la build du poste et installe le KB correspondant.
 - Redémarrage automatique : non (`/norestart`) → permet contrôle via Intune si nécessaire.
+
+## Packaging .intunewin
+```
+IntuneWinAppUtil.exe -c "PatchTuesday-Intune" -s Scripts\Install-KB.ps1 -o .
+```
 
 ## Notes
 - Compatible Windows 10 et Windows 11.
