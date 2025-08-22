@@ -126,39 +126,78 @@ function Publish-NewOrUpdateIntuneApp {
             Write-Host "[+] Application '$($app.DisplayName)' created successfully (ID: $($app.id))."
         }
 
-        # --- Assignment Logic (now handles updates) ---
+        # --- Assignment Logic (now handles updates and staggered deployment) ---
         Write-Host "[i] Setting assignments for app ID $($app.id)..."
-        $currentAssignments = Get-IntuneWin32AppAssignment -AppId $app.id
+        $currentAssignments = Get-IntuneWin32AppAssignment -ID $app.id
         if ($currentAssignments) {
             Write-Host "[i] Removing $($currentAssignments.Count) existing assignment(s)..."
             foreach ($assignment in $currentAssignments) {
-                Remove-IntuneWin32AppAssignmentGroup -AppId $app.id -GroupId $assignment.target.groupId
+                Remove-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $assignment.target.groupId
             }
         }
 
-        $groupsToAssign = @()
-        if ($GroupTest)  { $groupsToAssign += $GroupTest[0] }
-        if ($GroupRing1) { $groupsToAssign += $GroupRing1[0] }
-        if ($GroupRing2) { $groupsToAssign += $GroupRing2[0] }
-        if ($GroupRing3) { $groupsToAssign += $GroupRing3[0] }
-        if ($GroupLast)  { $groupsToAssign += $GroupLast[0] }
-
-        if ($groupsToAssign.Count -gt 0) {
-            Write-Host "[i] Applying $($groupsToAssign.Count) new assignment(s)..."
-            foreach ($group in $groupsToAssign) {
-                Add-IntuneWin32AppAssignmentGroup -AppId $app.id -GroupId $group -Intent "required" -Notification "showAll"
-            }
-            Write-Host "[+] Assignments updated successfully."
-        } else {
-            Write-Host "[!] No group IDs provided. All existing assignments removed."
+        if ($GroupTest) {
+            Write-Host "[i] Assigning to Test group for ASAP deployment..."
+            $settings = @{ Notification = "showAll" }
+            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupTest[0] -Intent "required" -Settings $settings -Include
         }
+        if ($GroupRing1) {
+            Write-Host "[i] Assigning to Ring1 group for deployment in 3 days..."
+            $settings = @{
+                Notification = "showAll"
+                installTimeSettings = @{
+                    useLocalTime = $false
+                    startDateTime = (Get-Date).AddDays(3).ToString("o")
+                    deadlineDateTime = (Get-Date).AddDays(6).ToString("o")
+                }
+            }
+            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupRing1[0] -Intent "required" -Settings $settings -Include
+        }
+        if ($GroupRing2) {
+            Write-Host "[i] Assigning to Ring2 group for deployment in 6 days..."
+            $settings = @{
+                Notification = "showAll"
+                installTimeSettings = @{
+                    useLocalTime = $false
+                    startDateTime = (Get-Date).AddDays(6).ToString("o")
+                    deadlineDateTime = (Get-Date).AddDays(9).ToString("o")
+                }
+            }
+            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupRing2[0] -Intent "required" -Settings $settings -Include
+        }
+        if ($GroupRing3) {
+            Write-Host "[i] Assigning to Ring3 group for deployment in 8 days..."
+            $settings = @{
+                Notification = "showAll"
+                installTimeSettings = @{
+                    useLocalTime = $false
+                    startDateTime = (Get-Date).AddDays(8).ToString("o")
+                    deadlineDateTime = (Get-Date).AddDays(11).ToString("o")
+                }
+            }
+            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupRing3[0] -Intent "required" -Settings $settings -Include
+        }
+        if ($GroupLast) {
+            Write-Host "[i] Assigning to Last group for deployment in 10 days..."
+            $settings = @{
+                Notification = "showAll"
+                installTimeSettings = @{
+                    useLocalTime = $false
+                    startDateTime = (Get-Date).AddDays(10).ToString("o")
+                    deadlineDateTime = (Get-Date).AddDays(15).ToString("o")
+                }
+            }
+            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupLast[0] -Intent "required" -Settings $settings -Include
+        }
+
+        Write-Host "[+] Assignments updated successfully."
     }
     finally {
         # No disconnect needed
     }
 }
 
-# --- Main Script Logic (is unchanged) ---
+# --- Main Script Logic ---
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BaseDir = Resolve-Path -Path (Join-Path $PSScriptRoot "..")
 $ToolsDir = Join-Path $BaseDir "Tools"

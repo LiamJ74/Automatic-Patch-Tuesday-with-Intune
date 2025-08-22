@@ -12,9 +12,9 @@ The script handles everything: finding the latest KBs, downloading them, packagi
 -   **Auto-Dependency:** Automatically downloads the `IntuneWinAppUtil.exe` packaging tool if it's missing.
 -   **Intelligent Publishing:**
     -   **Creates** the app if it doesn't exist for the current month.
-    -   **Updates** assignments if the app for the current month already exists.
+    -   **Updates** assignments if the app for the current month already exists, ensuring your deployment rings are always in sync with the parameters you provide.
 -   **Auto-Packaging:** Automatically creates the `.intunewin` package.
--   **Auto-Assignment:** Automatically assigns the application to your specified deployment groups and keeps them in sync on subsequent runs.
+-   **Auto-Assignment:** Automatically assigns the application to your specified deployment groups.
 -   **Non-Interactive:** Uses an Azure AD App Registration for a secure, unattended connection to Microsoft Graph.
 
 ## 🛠️ Prerequisites
@@ -42,7 +42,7 @@ Before you begin, ensure you have the following:
     -   Click **Add a permission** > **Microsoft Graph**.
     -   Select **Application permissions**.
     -   Search for and add the following permissions:
-        -   `DeviceManagementApps.ReadWrite.All`: Allows the script to create and manage applications.
+        -   `DeviceManagementApps.ReadWrite.All`: Allows the script to create and manage applications and their assignments.
         -   `Group.Read.All`: Allows the script to find your assignment groups.
     -   Click **Add permissions**.
 6.  Finally, click **Grant admin consent for [Your Tenant]**. The status for both permissions should change to "Granted".
@@ -74,20 +74,15 @@ Before you begin, ensure you have the following:
 
 ## ⚙️ The Workflow (What the Script Does)
 
-1.  **Connects to Intune:** Authenticates to Microsoft Graph using your App Registration.
+1.  **Connects to Intune:** Authenticates to Microsoft Graph using the `IntuneWin32App` module and your App Registration.
 2.  **Checks for Existing App:** Searches for an app with the name for the current month (e.g., "Patch Tuesday - August 2025").
 3.  **If App Exists:**
-    -   It skips the creation and packaging steps.
-    -   It reads the current assignments for the application.
-    -   It removes all existing assignments.
-    -   It applies the new set of assignments based on the `-Group...` parameters you provided. This allows you to easily add or remove deployment rings.
+    -   The script confirms the app exists and proceeds to update its assignments.
 4.  **If App Does Not Exist:**
-    -   **Downloads KBs:** Searches the Microsoft Update Catalog for the latest KBs for your target builds and downloads them.
-    -   **Creates `kbmap.csv`:** Generates the mapping file for the client script.
-    -   **Checks for Packager:** Ensures `IntuneWinAppUtil.exe` is present in the `Tools/` folder, downloading it if necessary.
-    -   **Generates Detection Script:** Creates a `Detection.ps1` script on the fly.
-    -   **Packages:** Compresses all necessary files into an `.intunewin` package.
-    -   **Creates App in Intune:** Uploads the package and creates the new application with all specified metadata.
-    -   **Assigns App:** Assigns the newly created application to the groups provided.
+    -   The script downloads all required KBs, packages them into an `.intunewin` file (along with the installer and detection scripts), and creates a new application in Intune.
+5.  **Syncs Assignments:**
+    -   The script retrieves all current assignments for the application.
+    -   It **removes all of them** to ensure a clean state.
+    -   It then **adds new assignments** based on the `-Group...` parameters you provided in the command line. This ensures the app is assigned to exactly the groups you specified in the last run.
 
 Enjoy your fully automated patching! 🥳
