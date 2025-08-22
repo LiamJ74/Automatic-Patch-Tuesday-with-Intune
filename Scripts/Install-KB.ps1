@@ -1,43 +1,59 @@
 <#
 .SYNOPSIS
-    Installe le KB correct selon la build du poste
+    Installs the correct KB according to the OS build.
 .DESCRIPTION
-    - Lit kbmap.csv
-    - Détecte la build actuelle
-    - Installe le KB correspondant
+    - Reads kbmap.csv to find the right update.
+    - Detects the current OS build.
+    - Installs the corresponding KB silently.
 #>
 
-# Get the parent directory of the current script's location
+# The script is running from the root of the extracted package on the client.
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$BaseDir = Resolve-Path -Path (Join-Path $PSScriptRoot "..")
 
-$CsvFile = Join-Path $BaseDir "kbmap.csv"
+$CsvFile = Join-Path $PSScriptRoot "kbmap.csv"
 
 if (-not (Test-Path $CsvFile)) {
-    Write-Host "⚠️ kbmap.csv not found at $CsvFile"
+    # This error will be visible in Intune logs if something goes wrong.
+    Write-Error "[!] kbmap.csv not found at $CsvFile. Cannot proceed."
     exit 1
 }
 
-$osInfo = Get-CimInstance Win32_OperatingSystem
-$build = [int]$osInfo.BuildNumber
-$osName = if ($osInfo.Caption -match "Windows 10") { "Windows 10" } else { "Windows 11" }
+try {
+    $osInfo = Get-CimInstance Win32_OperatingSystem
+    $build = [int]$osInfo.BuildNumber
+    # Use -like for broader compatibility
+    $osName = if ($osInfo.Caption -like "*Windows 10*") { "Windows 10" } else { "Windows 11" }
+}
+catch {
+    Write-Error "[!] Failed to get OS information."
+    throw $_
+}
+
 
 $kbMap = Import-Csv $CsvFile | Where-Object { $_.OS -eq $osName }
 
 $kbEntry = $kbMap | Where-Object { $_.Build -eq $build.ToString() }
 
 if (-not $kbEntry) {
-    Write-Host "✅ No applicable KB found for $osName build $build in kbmap.csv. Nothing to do."
+    Write-Host "[+] No applicable KB found for $osName build $build in kbmap.csv. Nothing to do."
     exit 0
 }
 
-$msuFile = Join-Path $BaseDir $kbEntry.FileName
+$msuFile = Join-Path $PSScriptRoot $kbEntry.FileName
 
 if (-not (Test-Path $msuFile)) {
-    Write-Host "⚠️ MSU file not found: $msuFile"
+    Write-Error "[!] MSU file not found at '$msuFile'. The package seems to be incomplete."
     exit 1
 }
 
-Write-Host "⬇️ Installing KB $($kbEntry.KB) for $osName build $build..."
-Start-Process "wusa.exe" -ArgumentList "$msuFile /quiet /norestart" -Wait
-Write-Host "✅ Installation process completed."
+Write-Host "[i] Installing KB $($kbEntry.KB) for $osName build $build..."
+try {
+    # Using wusa.exe to install the update package silently.
+    # /quiet and /norestart are used for unattended installation.
+    Start-Process "wusa.exe" -ArgumentList "`"$msuFile`" /quiet /norestart" -Wait -ErrorAction Stop
+    Write-Host "[+] Installation process for KB $($kbEntry.KB) completed."
+}
+catch {
+    Write-Error "[!] Failed to start wusa.exe to install the update."
+    throw $_
+}

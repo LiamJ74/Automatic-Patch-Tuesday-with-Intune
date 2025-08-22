@@ -4,15 +4,17 @@
 
 This project provides a single, powerful PowerShell script to perform a **true end-to-end automated deployment** of monthly Patch Tuesday updates.
 
-The script handles everything: finding the latest KBs, downloading them, packaging them into an `.intunewin` file, and creating and assigning a new application in Intune, ready for your pilot ring.
+The script handles everything: finding the latest KBs, downloading them, packaging them, and creating or updating the application in Intune, ready for deployment.
 
 ## 🌟 Key Features
 
--   **Auto-Discovery:** Automatically finds the latest Cumulative Updates for the Windows builds you define.
+-   **Auto-Discovery:** Automatically finds the latest Cumulative Updates for the Windows builds you define (x64 and arm64).
 -   **Auto-Dependency:** Automatically downloads the `IntuneWinAppUtil.exe` packaging tool if it's missing.
+-   **Intelligent Publishing:**
+    -   **Creates** the app if it doesn't exist for the current month.
+    -   **Updates** assignments if the app for the current month already exists.
 -   **Auto-Packaging:** Automatically creates the `.intunewin` package.
--   **Auto-Publishing:** Automatically creates a **new application** in Intune each month. This is a best practice for version tracking.
--   **Auto-Assignment:** Automatically assigns the new application to your specified deployment groups (e.g., Pilot, Broad, Prod).
+-   **Auto-Assignment:** Automatically assigns the application to your specified deployment groups and keeps them in sync on subsequent runs.
 -   **Non-Interactive:** Uses an Azure AD App Registration for a secure, unattended connection to Microsoft Graph.
 
 ## 🛠️ Prerequisites
@@ -23,7 +25,7 @@ Before you begin, ensure you have the following:
 2.  **Required PowerShell Modules:** Install them by running these commands in PowerShell:
     ```powershell
     Install-Module -Name MSCatalogLTS -Force
-    Install-Module -Name IntuneWin32App -Force
+    Install-Module -Name IntuneWin32App -Force -Repository PSGallery
     ```
 3.  **An Azure AD App Registration:** The script needs an identity in Azure to interact with Intune securely.
 
@@ -48,7 +50,7 @@ Before you begin, ensure you have the following:
 ## 🏃‍♀️ How to Run the Script
 
 1.  **Configure Target Builds:** Open `Scripts/Generate-KBMap.ps1` and edit the `$TargetBuilds` variable to include the Windows builds you manage.
-2.  **Execute the script from the project root directory** with your parameters.
+2.  **Execute the script from the project root directory** with your parameters. The script will use the current month and year to name the application (e.g., "Patch Tuesday - August 2025").
 
 ### Example
 
@@ -57,27 +59,35 @@ Before you begin, ensure you have the following:
     -ClientId "your-application-client-id" `
     -ClientSecret "your-client-secret-value" `
     -TenantId "your-directory-tenant-id" `
-    -AppName "Patch Tuesday - $(Get-Date -Format 'MMMM yyyy')" `
     -Publisher "My IT Department" `
-    -GroupPilot "object-id-of-pilot-group" `
-    -GroupBroad "object-id-of-broad-deployment-group"
+    -GroupTest "object-id-of-pilot-group" `
+    -GroupRing1 "object-id-of-ring1-group"
 ```
 
 ### All Available Parameters
 
 -   `ClientId`, `ClientSecret`, `TenantId`: (Mandatory) Your App Registration details.
--   `AppName`: The name of the application to be created in Intune. Defaults to "Patch Tuesday - [Current Month Year]".
+-   `AppName`: The name of the application. Defaults to "Patch Tuesday - [Current Month Year]".
 -   `Description`: The application description.
 -   `Publisher`: The publisher name.
--   `GroupPilot`, `GroupBroad`, `GroupProd`: (Optional) The Object IDs of the Azure AD groups for assignment. You can use one or more.
+-   `GroupTest`, `GroupRing1`, `GroupRing2`, `GroupRing3`, `GroupLast`: (Optional) The Object IDs of the Azure AD groups for assignment.
 
 ## ⚙️ The Workflow (What the Script Does)
 
-1.  **Downloads KBs:** Searches the Microsoft Update Catalog for the latest Cumulative Updates for your target builds and downloads the `.msu` files into the `KBs/` folder.
-2.  **Creates `kbmap.csv`:** Generates a mapping file for the client script to use.
-3.  **Checks for Packager:** Ensures `IntuneWinAppUtil.exe` is present in the `Tools/` folder, downloading it if necessary.
-4.  **Generates Detection Script:** Creates a `Detection.ps1` script on the fly. This script is used by Intune to check if the correct KB is already installed.
-5.  **Packages:** Compresses the `Scripts/` and `KBs/` folders along with `kbmap.csv` into an `.intunewin` file.
-6.  **Publishes to Intune:** Connects to Microsoft Graph and uses the `IntuneWin32App` module to upload the package, create the new application with your specified metadata, and assign it to your groups.
+1.  **Connects to Intune:** Authenticates to Microsoft Graph using your App Registration.
+2.  **Checks for Existing App:** Searches for an app with the name for the current month (e.g., "Patch Tuesday - August 2025").
+3.  **If App Exists:**
+    -   It skips the creation and packaging steps.
+    -   It reads the current assignments for the application.
+    -   It removes all existing assignments.
+    -   It applies the new set of assignments based on the `-Group...` parameters you provided. This allows you to easily add or remove deployment rings.
+4.  **If App Does Not Exist:**
+    -   **Downloads KBs:** Searches the Microsoft Update Catalog for the latest KBs for your target builds and downloads them.
+    -   **Creates `kbmap.csv`:** Generates the mapping file for the client script.
+    -   **Checks for Packager:** Ensures `IntuneWinAppUtil.exe` is present in the `Tools/` folder, downloading it if necessary.
+    -   **Generates Detection Script:** Creates a `Detection.ps1` script on the fly.
+    -   **Packages:** Compresses all necessary files into an `.intunewin` package.
+    -   **Creates App in Intune:** Uploads the package and creates the new application with all specified metadata.
+    -   **Assigns App:** Assigns the newly created application to the groups provided.
 
 Enjoy your fully automated patching! 🥳
