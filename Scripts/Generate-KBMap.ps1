@@ -63,14 +63,14 @@ function Publish-NewOrUpdateIntuneApp {
         [string]$ToolsDir,
         [string]$SourceFolder
     )
-
+    
     Write-Host "[i] Connecting to Microsoft Graph using the IntuneWin32App module..."
     try {
         Connect-MSIntuneGraph -ClientId $ClientId -ClientSecret $ClientSecret -TenantId $TenantId
         Write-Host "[+] Authentication successful."
     } catch {
         Write-Error "[!] Failed to authenticate with Intune using Connect-MSIntuneGraph. The full error is below."
-        throw $_
+        throw $_ 
     }
 
     try {
@@ -83,7 +83,7 @@ function Publish-NewOrUpdateIntuneApp {
         }
         else {
             Write-Host "[i] No existing application found. Proceeding with new application creation..."
-
+            
             $UtilPath = Get-IntuneWinAppUtil -ToolsDir $ToolsDir
             $SetupFile = Join-Path $SourceFolder "Scripts\Install-KB.ps1"
             $PackageDir = Join-Path $SourceFolder "IntunePackage"
@@ -99,15 +99,15 @@ function Publish-NewOrUpdateIntuneApp {
             $arguments = @("-c", "`"$SourceFolder`"", "-s", "`"$SetupFile`"", "-o", "`"$PackageDir`"", "-q")
             Start-Process -FilePath $UtilPath -ArgumentList $arguments -Wait -NoNewWindow
             Write-Progress -Activity "Packaging Win32 Application" -Completed
-
+            
             $IntuneWinFile = Join-Path $PackageDir "Install-KB.intunewin"
             if (-not (Test-Path $IntuneWinFile)) {
                 throw "[!] Packaging failed. The tool ran silently but '$IntuneWinFile' was not created."
             }
             Write-Host "[+] Package created successfully: '$IntuneWinFile'."
-
+            
             $detectionRule = New-IntuneWin32AppDetectionRuleScript -ScriptFile (Join-Path $SourceFolder "Scripts\Detection.ps1")
-
+            
             $appParams = @{
                 FilePath              = $IntuneWinFile
                 DisplayName           = $AppName
@@ -132,62 +132,31 @@ function Publish-NewOrUpdateIntuneApp {
         if ($currentAssignments) {
             Write-Host "[i] Removing $($currentAssignments.Count) existing assignment(s)..."
             foreach ($assignment in $currentAssignments) {
-                Remove-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $assignment.target.groupId
+                if ($null -ne $assignment.target.groupId) {
+                    Remove-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $assignment.target.groupId
+                }
             }
         }
 
         if ($GroupTest) {
             Write-Host "[i] Assigning to Test group for ASAP deployment..."
-            $settings = @{ Notification = "showAll" }
-            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupTest[0] -Intent "required" -Settings $settings -Include
+            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupTest[0] -Intent "required" -Notification "showAll" -Include
         }
         if ($GroupRing1) {
             Write-Host "[i] Assigning to Ring1 group for deployment in 3 days..."
-            $settings = @{
-                Notification = "showAll"
-                installTimeSettings = @{
-                    useLocalTime = $false
-                    startDateTime = (Get-Date).AddDays(3).ToString("o")
-                    deadlineDateTime = (Get-Date).AddDays(6).ToString("o")
-                }
-            }
-            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupRing1[0] -Intent "required" -Settings $settings -Include
+            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupRing1[0] -Intent "required" -Notification "showAll" -Include -AvailableTime (Get-Date).AddDays(3) -DeadlineTime (Get-Date).AddDays(6)
         }
         if ($GroupRing2) {
             Write-Host "[i] Assigning to Ring2 group for deployment in 6 days..."
-            $settings = @{
-                Notification = "showAll"
-                installTimeSettings = @{
-                    useLocalTime = $false
-                    startDateTime = (Get-Date).AddDays(6).ToString("o")
-                    deadlineDateTime = (Get-Date).AddDays(9).ToString("o")
-                }
-            }
-            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupRing2[0] -Intent "required" -Settings $settings -Include
+            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupRing2[0] -Intent "required" -Notification "showAll" -Include -AvailableTime (Get-Date).AddDays(6) -DeadlineTime (Get-Date).AddDays(9)
         }
         if ($GroupRing3) {
             Write-Host "[i] Assigning to Ring3 group for deployment in 8 days..."
-            $settings = @{
-                Notification = "showAll"
-                installTimeSettings = @{
-                    useLocalTime = $false
-                    startDateTime = (Get-Date).AddDays(8).ToString("o")
-                    deadlineDateTime = (Get-Date).AddDays(11).ToString("o")
-                }
-            }
-            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupRing3[0] -Intent "required" -Settings $settings -Include
+            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupRing3[0] -Intent "required" -Notification "showAll" -Include -AvailableTime (Get-Date).AddDays(8) -DeadlineTime (Get-Date).AddDays(11)
         }
         if ($GroupLast) {
             Write-Host "[i] Assigning to Last group for deployment in 10 days..."
-            $settings = @{
-                Notification = "showAll"
-                installTimeSettings = @{
-                    useLocalTime = $false
-                    startDateTime = (Get-Date).AddDays(10).ToString("o")
-                    deadlineDateTime = (Get-Date).AddDays(15).ToString("o")
-                }
-            }
-            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupLast[0] -Intent "required" -Settings $settings -Include
+            Add-IntuneWin32AppAssignmentGroup -ID $app.id -GroupId $GroupLast[0] -Intent "required" -Notification "showAll" -Include -AvailableTime (Get-Date).AddDays(10) -DeadlineTime (Get-Date).AddDays(15)
         }
 
         Write-Host "[+] Assignments updated successfully."
@@ -223,10 +192,10 @@ foreach ($target in $TargetBuilds) {
     $searchTerm = "Cumulative Update for $($os) Version $($build.Substring(0,2))H2 for $($arch)-based Systems"
     if ($os -eq "Windows 10") { $searchTerm = "Cumulative Update for Windows 10 Version 22H2 for $arch-based Systems" }
     if ($os -eq "Windows 11" -and $build -eq "26100") { $searchTerm = "Cumulative Update for Windows 11 Version 24H2 for $arch-based Systems" }
-
+    
     Write-Host "[i] Searching for latest update for $os Build $build ($arch)..."
     $update = Get-MSCatalogUpdate -Search $searchTerm -ExcludeFramework -IncludePreview:$false | Select-Object -First 1
-
+    
     if ($update) {
         if ($update.Title -match "KB(\d+)") {
             $kbNumber = $Matches[1]
