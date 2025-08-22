@@ -64,9 +64,20 @@ function Publish-NewOrUpdateIntuneApp {
         [string]$SourceFolder
     )
     
+    # Resolve client secret. Prioritize parameter, then fall back to environment variable.
+    $resolvedClientSecret = $ClientSecret
+    if (-not $resolvedClientSecret) {
+        Write-Host "[i] -ClientSecret parameter not provided. Checking for environment variable 'INTUNE_CLIENT_SECRET'..."
+        $resolvedClientSecret = $env:INTUNE_CLIENT_SECRET
+    }
+
+    if (-not $resolvedClientSecret) {
+        throw "[!] Client secret not provided. Please use the '-ClientSecret' parameter or set the 'INTUNE_CLIENT_SECRET' environment variable."
+    }
+
     Write-Host "[i] Connecting to Microsoft Graph using the IntuneWin32App module..."
     try {
-        Connect-MSIntuneGraph -ClientId $ClientId -ClientSecret $ClientSecret -TenantId $TenantId
+        Connect-MSIntuneGraph -ClientId $ClientId -ClientSecret $resolvedClientSecret -TenantId $TenantId
         Write-Host "[+] Authentication successful."
     } catch {
         Write-Error "[!] Failed to authenticate with Intune using Connect-MSIntuneGraph. The full error is below."
@@ -232,24 +243,12 @@ $KBMap | Export-Csv -Path $CsvFile -NoTypeInformation -Encoding UTF8
 Write-Host "[+] Successfully generated kbmap.csv."
 
 if ($PSBoundParameters.ContainsKey('ClientId')) {
-    $detectionScriptContent = @"
-`$PSScriptRoot = Split-Path -Parent `$MyInvocation.MyCommand.Path
-`$kbMap = Import-Csv -Path (Join-Path `$PSScriptRoot "kbmap.csv") -ErrorAction SilentlyContinue
-if (`$null -eq `$kbMap) { exit 1 }
-`$osInfo = Get-CimInstance Win32_OperatingSystem
-`$build = [int]`$osInfo.BuildNumber
-`$kbEntry = `$kbMap | Where-Object { `$_.Build -eq `$build.ToString() }
-if (`$kbEntry) {
-    `$kbNumber = `$kbEntry.KB
-    if (Get-HotFix -Id `$kbNumber -ErrorAction SilentlyContinue) {
-        Write-Host "Found"
-        exit 0
-    }
-}
-exit 1
-"@
+    # The Detection.ps1 script is now a standalone file, so we no longer generate it.
+    # We just need to ensure it exists before trying to package it.
     $detectionScriptPath = Join-Path $BaseDir "Scripts\Detection.ps1"
-    Set-Content -Path $detectionScriptPath -Value $detectionScriptContent -Encoding UTF8
+    if (-not (Test-Path $detectionScriptPath)) {
+        throw "[!] Detection script not found at '$detectionScriptPath'. It should be part of the script source."
+    }
 
     Publish-NewOrUpdateIntuneApp -ToolsDir $ToolsDir -SourceFolder $BaseDir
 } else {

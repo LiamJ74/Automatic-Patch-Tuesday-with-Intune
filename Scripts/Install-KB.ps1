@@ -47,13 +47,24 @@ if (-not (Test-Path $msuFile)) {
 }
 
 Write-Host "[i] Installing KB $($kbEntry.KB) for $osName build $build..."
+$exitCode = 0 # Default to success unless changed
 try {
     # Using wusa.exe to install the update package silently.
     # /quiet and /norestart are used for unattended installation.
-    Start-Process "wusa.exe" -ArgumentList "`"$msuFile`" /quiet /norestart" -Wait -ErrorAction Stop
-    Write-Host "[+] Installation process for KB $($kbEntry.KB) completed."
+    # -PassThru returns the process object, which we wait for and then get the exit code from.
+    $process = Start-Process "wusa.exe" -ArgumentList "`"$msuFile`" /quiet /norestart" -Wait -PassThru -ErrorAction Stop
+    $exitCode = $process.ExitCode
+    Write-Host "[+] Installation process for KB $($kbEntry.KB) completed with exit code: $exitCode"
 }
 catch {
     Write-Error "[!] Failed to start wusa.exe to install the update."
-    throw $_
+    # We will exit with a generic failure code if the process fails to start.
+    # The error record from the 'throw' will be in the logs.
+    exit 1
 }
+
+# Exit with the code from wusa.exe. Intune uses this to determine success/failure/reboot.
+# 0 = Success
+# 3010 = Success, reboot required
+# Other non-zero = Failure
+exit $exitCode
