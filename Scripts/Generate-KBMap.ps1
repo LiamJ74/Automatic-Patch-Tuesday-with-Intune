@@ -230,7 +230,36 @@ foreach ($target in $TargetBuilds) {
                 throw "[!] Could not find the downloaded file for KB $kbNumber in $OutputFolder."
             }
         }
-        $KBMap += [PSCustomObject]@{ OS = $os; Build = $build; KB = $kbNumber; FileName = "KBs\$fileName" }
+        # --- New UBR Extraction Logic ---
+        $ubr = $null
+        # The support URL is the most reliable place to find the OS Build.Revision number (UBR)
+        $supportUrl = "https://support.microsoft.com/help/$kbNumber"
+        Write-Host "[i] Checking support page for UBR: $supportUrl"
+        try {
+            # We use Invoke-WebRequest to get the content of the KB article page.
+            $pageContent = Invoke-WebRequest -Uri $supportUrl -UseBasicParsing -ErrorAction Stop
+
+            # The regex is designed to find the specific build number for the OS we are targeting,
+            # and then capture the revision number (UBR) that follows it after a period.
+            # e.g., it will look for "OS Build 22631." and capture the number that follows.
+            if ($pageContent.Content -match "OS Build $($build)\.(\d+)") {
+                $ubr = $Matches[1]
+                Write-Host "[+] Found UBR: $ubr for Build $build"
+            } else {
+                Write-Warning "[!] Could not find a matching UBR for build $build on page $supportUrl. The page content may have an unexpected format."
+            }
+        } catch {
+            Write-Warning "[!] Failed to download or parse support page $supportUrl. Error: $($_.Exception.Message)"
+        }
+
+        # If we couldn't find a UBR, we cannot proceed with this update as it won't work with the new detection script.
+        if (-not $ubr) {
+            Write-Warning "[!] UBR not found for KB$kbNumber. This update will be skipped."
+            continue # Move to the next item in the loop.
+        }
+        # --- End UBR Extraction Logic ---
+
+        $KBMap += [PSCustomObject]@{ OS = $os; Build = $build; UBR = $ubr; KB = $kbNumber; FileName = "KBs\$fileName" }
     }
 }
 
