@@ -239,10 +239,10 @@ foreach ($target in $TargetBuilds) {
             # We use Invoke-WebRequest to get the content of the KB article page.
             $pageContent = Invoke-WebRequest -Uri $supportUrl -UseBasicParsing -ErrorAction Stop
 
-            # The regex is designed to find the specific build number for the OS we are targeting,
+            # The regex is designed to find the specific build number (e.g., 22631) in the page content,
             # and then capture the revision number (UBR) that follows it after a period.
-            # e.g., it will look for "OS Build 22631." and capture the number that follows.
-            if ($pageContent.Content -match "OS Build $($build)\.(\d+)") {
+            # This is more robust than looking for "OS Build..." which can change.
+            if ($pageContent.Content -match "$($build)\.(\d+)") {
                 $ubr = $Matches[1]
                 Write-Host "[+] Found UBR: $ubr for Build $build"
             } else {
