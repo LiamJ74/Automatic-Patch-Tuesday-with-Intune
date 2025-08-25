@@ -24,20 +24,37 @@ try {
     $build = [int]$osInfo.BuildNumber
     # Use -like for broader compatibility
     $osName = if ($osInfo.Caption -like "*Windows 10*") { "Windows 10" } else { "Windows 11" }
+
+    # Determine system architecture to find the correct entry in the map.
+    $arch = $env:PROCESSOR_ARCHITECTURE
+    if ($arch -eq 'AMD64') {
+        $mappedArch = 'x64'
+    } elseif ($arch -eq 'ARM64') {
+        $mappedArch = 'arm64'
+    } else {
+        Write-Error "Installation failed: Unsupported processor architecture '$arch'."
+        exit 1
+    }
 }
 catch {
-    Write-Error "[!] Failed to get OS information."
+    Write-Error "[!] Failed to get OS or architecture information."
     throw $_
 }
 
 
 $kbMap = Import-Csv $CsvFile | Where-Object { $_.OS -eq $osName }
 
-$kbEntry = $kbMap | Where-Object { $_.Build -eq $build.ToString() }
+$kbEntry = $kbMap | Where-Object { $_.Build -eq $build.ToString() -and $_.Arch -eq $mappedArch }
 
 if (-not $kbEntry) {
-    Write-Host "[+] No applicable KB found for $osName build $build in kbmap.csv. Nothing to do."
+    Write-Host "[+] No applicable KB found for $osName build $build and architecture $mappedArch in kbmap.csv. Nothing to do."
     exit 0
+}
+
+# Ensure there is only one entry found. If multiple, it's an error.
+if ($kbEntry.Count -gt 1) {
+    Write-Error "[!] Found multiple matching entries for build $build and architecture $mappedArch. Cannot proceed."
+    exit 1
 }
 
 # Split filename field by space to handle one or more files.

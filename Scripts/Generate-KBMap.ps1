@@ -259,7 +259,7 @@ foreach ($target in $TargetBuilds) {
         }
         # --- End UBR Extraction Logic ---
 
-        $KBMap += [PSCustomObject]@{ OS = $os; Build = $build; UBR = $ubr; KB = $kbNumber; FileName = "KBs\$fileName" }
+        $KBMap += [PSCustomObject]@{ OS = $os; Build = $build; Arch = $arch; UBR = $ubr; KB = $kbNumber; FileName = "KBs\$fileName" }
     }
 }
 
