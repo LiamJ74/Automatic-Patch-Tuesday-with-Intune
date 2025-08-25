@@ -69,13 +69,21 @@ The script will automatically detect and use this environment variable. If you m
 
 1.  **Set the Environment Variable:** For security, provide the client secret via the `INTUNE_CLIENT_SECRET` environment variable (see the security note above).
 2.  **Configure Target Builds:** Open `Scripts/Generate-KBMap.ps1` and edit the `$TargetBuilds` variable to include the Windows builds you manage.
-3.  **Execute the script from the project root directory** with your parameters. The script will use the current month and year to name the application (e.g., "Patch Tuesday - August 2025").
+3.  **Unblock the Script File:** If you downloaded this project as a ZIP file, Windows may block the script from running. Unblock it first:
+    ```powershell
+    Unblock-File -Path ./Scripts/Generate-KBMap.ps1
+    ```
+4.  **Execute the script from the project root directory** with your parameters. The script will use the current month and year to name the application (e.g., "Patch Tuesday - August 2025").
 
 ### Example
 
 This example assumes you have set the `INTUNE_CLIENT_SECRET` environment variable.
 
 ```powershell
+# First, ensure the script is not blocked by Windows execution policy
+Unblock-File -Path ./Scripts/Generate-KBMap.ps1
+
+# Now, run the script with your parameters
 ./Scripts/Generate-KBMap.ps1 `
     -ClientId "your-application-client-id" `
     -TenantId "your-directory-tenant-id" `
