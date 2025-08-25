@@ -1,3 +1,4 @@
+Start-Transcript -Path "C:\Windows\Temp\KBInstaller-debug.log" -Append
 <#
 .SYNOPSIS
     Installs the correct KB according to the OS build.
@@ -134,6 +135,7 @@ elseif ($csvHeaders -contains 'Title') {
             Write-Host "[i] Cleaning up temporary directory..."
             Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
         }
+        Stop-Transcript
     }
 }
 else {
@@ -142,5 +144,10 @@ else {
 }
 
 # --- Final Exit Code ---
+if ($finalExitCode -eq 3010) {
+    Write-Host "[+] Installation requires reboot (3010). Mapping to exit code 0 for Intune as per troubleshooting instructions."
+    exit 0
+}
+
 Write-Host "[+] Process complete. Final exit code for Intune is: $finalExitCode"
 exit $finalExitCode
