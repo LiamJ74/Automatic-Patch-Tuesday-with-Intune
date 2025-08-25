@@ -10,7 +10,8 @@
 # The script is running from the root of the extracted package on the client.
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-$CsvFile = Join-Path $PSScriptRoot "kbmap.csv"
+# The script runs from the 'Scripts' subdirectory, but the CSV is at the root.
+$CsvFile = Join-Path $PSScriptRoot "..\kbmap.csv"
 
 if (-not (Test-Path $CsvFile)) {
     # This error will be visible in Intune logs if something goes wrong.
@@ -48,7 +49,8 @@ Write-Host "[i] Found $($files.Count) update file(s) to install for KB $($kbEntr
 foreach ($file in $files) {
     if (-not $file) { continue } # Skip empty entries if there are extra spaces
 
-    $msuFile = Join-Path $PSScriptRoot $file
+    # The $file path (e.g., "KBs\...") is relative to the package root, not the script's location.
+    $msuFile = Join-Path $PSScriptRoot "..\$file"
     if (-not (Test-Path $msuFile)) {
         Write-Error "[!] MSU file not found at '$msuFile'. The package seems to be incomplete."
         exit 1 # Exit immediately if a file is missing

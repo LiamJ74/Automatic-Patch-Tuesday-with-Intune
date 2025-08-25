@@ -124,7 +124,7 @@ function Publish-NewOrUpdateIntuneApp {
                 DisplayName           = $AppName
                 Description           = $Description
                 Publisher             = $Publisher
-                InstallCommandLine    = 'powershell.exe -executionpolicy bypass -windowstyle hidden -file ".\Install-KB.ps1"'
+                InstallCommandLine    = 'powershell.exe -executionpolicy bypass -windowstyle hidden -file ".\Scripts\Install-KB.ps1"'
                 UninstallCommandLine  = 'cmd.exe /c "exit 0"'
                 InstallExperience     = "system"
                 RestartBehavior       = "suppress"
