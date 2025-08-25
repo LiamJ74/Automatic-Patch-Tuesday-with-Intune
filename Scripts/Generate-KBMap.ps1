@@ -65,7 +65,8 @@ function Get-IntuneWinAppUtil {
 function Publish-NewOrUpdateIntuneApp {
     param(
         [string]$ToolsDir,
-        [string]$SourceFolder
+        [string]$ScriptsFolder,
+        [string]$IntunePackageDir
     )
     
     # Resolve client secret. Prioritize parameter, then fall back to environment variable.
@@ -100,35 +101,34 @@ function Publish-NewOrUpdateIntuneApp {
             Write-Host "[i] No existing application found. Proceeding with new application creation..."
             
             $UtilPath = Get-IntuneWinAppUtil -ToolsDir $ToolsDir
-            $SetupFile = Join-Path $SourceFolder "Scripts\Install-KB.ps1"
-            $PackageDir = Join-Path $SourceFolder "IntunePackage"
+            $SetupFile = "Install-KB.ps1" # Relative to ScriptsFolder
 
-            if (Test-Path $PackageDir) {
+            if (Test-Path $IntunePackageDir) {
                 Write-Host "[i] Cleaning previous package directory..."
-                Remove-Item -Path $PackageDir -Recurse -Force
+                Remove-Item -Path $IntunePackageDir -Recurse -Force
             }
-            New-Item -ItemType Directory -Path $PackageDir | Out-Null
+            New-Item -ItemType Directory -Path $IntunePackageDir | Out-Null
 
             Write-Host "[i] Starting Intune package creation (in background)..."
             Write-Progress -Activity "Packaging Win32 Application" -Status "Running IntuneWinAppUtil.exe... This may take a moment."
-            $arguments = @("-c", "`"$SourceFolder`"", "-s", "`"$SetupFile`"", "-o", "`"$PackageDir`"", "-q")
+            $arguments = @("-c", "`"$ScriptsFolder`"", "-s", "`"$SetupFile`"", "-o", "`"$IntunePackageDir`"", "-q")
             Start-Process -FilePath $UtilPath -ArgumentList $arguments -Wait -NoNewWindow
             Write-Progress -Activity "Packaging Win32 Application" -Completed
             
-            $IntuneWinFile = Join-Path $PackageDir "Install-KB.intunewin"
+            $IntuneWinFile = Join-Path $IntunePackageDir $SetupFile.Replace(".ps1", ".intunewin")
             if (-not (Test-Path $IntuneWinFile)) {
                 throw "[!] Packaging failed. The tool ran silently but '$IntuneWinFile' was not created."
             }
             Write-Host "[+] Package created successfully: '$IntuneWinFile'."
             
-            $detectionRule = New-IntuneWin32AppDetectionRuleScript -ScriptFile (Join-Path $SourceFolder "Scripts\Detection.ps1")
+            $detectionRule = New-IntuneWin32AppDetectionRuleScript -ScriptFile (Join-Path $ScriptsFolder "Detection.ps1")
             
             $appParams = @{
                 FilePath              = $IntuneWinFile
                 DisplayName           = $AppName
                 Description           = $Description
                 Publisher             = $Publisher
-                InstallCommandLine    = 'powershell.exe -executionpolicy bypass -windowstyle hidden -file ".\Scripts\Install-KB.ps1"'
+                InstallCommandLine    = 'powershell.exe -executionpolicy bypass -windowstyle hidden -file ".\Install-KB.ps1"'
                 UninstallCommandLine  = 'cmd.exe /c "exit 0"'
                 InstallExperience     = "system"
                 RestartBehavior       = "suppress"
@@ -185,7 +185,9 @@ function Publish-NewOrUpdateIntuneApp {
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BaseDir = Resolve-Path -Path (Join-Path $PSScriptRoot "..")
 $ToolsDir = Join-Path $BaseDir "Tools"
-$CsvFile = Join-Path $BaseDir "kbmap.csv"
+$ScriptsFolder = Join-Path $BaseDir "Scripts"
+$IntunePackageDir = Join-Path $BaseDir "IntunePackage"
+$CsvFile = Join-Path $ScriptsFolder "kbmap.csv" # CSV is now created directly in Scripts
 
 $TargetBuilds = @(
     # Windows 10
@@ -203,7 +205,8 @@ $KBMap = @()
 # --- Logic Branch based on Download Method ---
 if ($DownloadMethod -eq 'Prepackage') {
     Write-Host "[i] Using 'Prepackage' method. KBs will be downloaded locally."
-    $OutputFolder = Join-Path $BaseDir "KBs"
+    # KBs folder is now created inside the Scripts folder for clean packaging
+    $OutputFolder = Join-Path $ScriptsFolder "KBs"
     if (-not (Test-Path $OutputFolder)) { New-Item -ItemType Directory -Path $OutputFolder | Out-Null }
 } else {
     Write-Host "[i] Using 'OnDemand' method. Only metadata will be collected."
@@ -264,6 +267,7 @@ foreach ($target in $TargetBuilds) {
                     throw "[!] Could not find the downloaded file for KB $kbNumber in $OutputFolder."
                 }
             }
+            # Path in CSV is now relative to the Scripts folder root
             $KBMap += [PSCustomObject]@{ OS = $os; Build = $build; Arch = $arch; UBR = $ubr; KB = $kbNumber; FileName = "KBs\$fileName" }
         } else { # OnDemand
             $KBMap += [PSCustomObject]@{ OS = $os; Build = $build; Arch = $arch; UBR = $ubr; KB = $kbNumber; Title = $update.Title }
@@ -272,22 +276,15 @@ foreach ($target in $TargetBuilds) {
 }
 
 if ($KBMap.Count -eq 0) {
-    Write-Host "[!] No updates were downloaded. Skipping packaging and upload."
+    Write-Host "[!] No updates were downloaded or metadata collected. Skipping packaging and upload."
     exit
 }
 
 $KBMap | Export-Csv -Path $CsvFile -NoTypeInformation -Encoding UTF8
-Write-Host "[+] Successfully generated kbmap.csv."
+Write-Host "[+] Successfully generated kbmap.csv in the Scripts folder."
 
 if ($PSBoundParameters.ContainsKey('ClientId')) {
-    # The Detection.ps1 script is now a standalone file, so we no longer generate it.
-    # We just need to ensure it exists before trying to package it.
-    $detectionScriptPath = Join-Path $BaseDir "Scripts\Detection.ps1"
-    if (-not (Test-Path $detectionScriptPath)) {
-        throw "[!] Detection script not found at '$detectionScriptPath'. It should be part of the script source."
-    }
-
-    Publish-NewOrUpdateIntuneApp -ToolsDir $ToolsDir -SourceFolder $BaseDir
+    Publish-NewOrUpdateIntuneApp -ToolsDir $ToolsDir -ScriptsFolder $ScriptsFolder -IntunePackageDir $IntunePackageDir
 } else {
-    Write-Host "[+] KB download and mapping complete. Skipping Intune publishing."
+    Write-Host "[+] KB processing complete. Skipping Intune publishing."
 }

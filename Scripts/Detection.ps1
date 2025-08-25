@@ -1,13 +1,13 @@
 # This script is used by Intune to detect if the application is already installed.
 # It checks if the device's OS Update Build Revision (UBR) is at or above the required minimum.
 
-# The script's PSScriptRoot is the ...\Scripts directory. The kbmap.csv is one level up.
+# All necessary files are in the same directory as the script.
 try {
     $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
-    $kbMapPath = Join-Path $PSScriptRoot "..\" "kbmap.csv"
+    $kbMapPath = Join-Path $PSScriptRoot "kbmap.csv"
 } catch {
-    Write-Error "Failed to construct path to kbmap.csv. Error: $_"
-    exit 1
+    # Fallback for environments where $MyInvocation is not reliable
+    $kbMapPath = ".\kbmap.csv"
 }
 
 # Check if the map file exists.

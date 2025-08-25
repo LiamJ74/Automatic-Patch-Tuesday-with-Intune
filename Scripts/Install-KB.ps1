@@ -10,8 +10,8 @@
 # The script is running from the root of the extracted package on the client.
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# The script runs from the 'Scripts' subdirectory, but the CSV is at the root.
-$CsvFile = Join-Path $PSScriptRoot "..\kbmap.csv"
+# All necessary files are in the same directory as the script, or a subdirectory.
+$CsvFile = Join-Path $PSScriptRoot "kbmap.csv"
 
 if (-not (Test-Path $CsvFile)) {
     # This error will be visible in Intune logs if something goes wrong.
@@ -69,7 +69,7 @@ if ($csvHeaders -contains 'FileName') {
 
     foreach ($file in $files) {
         if (-not $file) { continue }
-        $msuFile = Join-Path $PSScriptRoot "..\$file"
+        $msuFile = Join-Path $PSScriptRoot $file
         if (-not (Test-Path $msuFile)) {
             Write-Error "[!] MSU file not found at '$msuFile'."
             exit 1
