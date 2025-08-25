@@ -39,32 +39,48 @@ if (-not $kbEntry) {
     exit 0
 }
 
-$msuFile = Join-Path $PSScriptRoot $kbEntry.FileName
+# Split filename field by space to handle one or more files.
+$files = $kbEntry.FileName.Split(' ')
+$finalExitCode = 0 # Default to success
 
-if (-not (Test-Path $msuFile)) {
-    Write-Error "[!] MSU file not found at '$msuFile'. The package seems to be incomplete."
-    exit 1
+Write-Host "[i] Found $($files.Count) update file(s) to install for KB $($kbEntry.KB) on $osName build $build."
+
+foreach ($file in $files) {
+    if (-not $file) { continue } # Skip empty entries if there are extra spaces
+
+    $msuFile = Join-Path $PSScriptRoot $file
+    if (-not (Test-Path $msuFile)) {
+        Write-Error "[!] MSU file not found at '$msuFile'. The package seems to be incomplete."
+        exit 1 # Exit immediately if a file is missing
+    }
+
+    Write-Host "[i] Installing file: $file..."
+    try {
+        $process = Start-Process "wusa.exe" -ArgumentList "`"$msuFile`" /quiet /norestart" -Wait -PassThru -ErrorAction Stop
+        $exitCode = $process.ExitCode
+        Write-Host "[+] Installation of $file completed with exit code: $exitCode"
+
+        # Handle exit codes for Intune.
+        # 3010 (reboot required) has the highest priority.
+        # Any other non-zero code indicates a failure.
+        if ($exitCode -eq 3010) {
+            $finalExitCode = 3010
+        } elseif ($exitCode -ne 0 -and $finalExitCode -ne 3010) {
+            # If an error occurs, record it, but don't overwrite a pending reboot code.
+            $finalExitCode = $exitCode
+        }
+    }
+    catch {
+        Write-Error "[!] Failed to execute wusa.exe for '$msuFile'. Error details below."
+        # Capture the actual error record from the catch block.
+        Write-Error $_
+        exit 1 # Exit with a generic failure code if the process fails to start.
+    }
 }
 
-Write-Host "[i] Installing KB $($kbEntry.KB) for $osName build $build..."
-$exitCode = 0 # Default to success unless changed
-try {
-    # Using wusa.exe to install the update package silently.
-    # /quiet and /norestart are used for unattended installation.
-    # -PassThru returns the process object, which we wait for and then get the exit code from.
-    $process = Start-Process "wusa.exe" -ArgumentList "`"$msuFile`" /quiet /norestart" -Wait -PassThru -ErrorAction Stop
-    $exitCode = $process.ExitCode
-    Write-Host "[+] Installation process for KB $($kbEntry.KB) completed with exit code: $exitCode"
-}
-catch {
-    Write-Error "[!] Failed to start wusa.exe to install the update."
-    # We will exit with a generic failure code if the process fails to start.
-    # The error record from the 'throw' will be in the logs.
-    exit 1
-}
-
-# Exit with the code from wusa.exe. Intune uses this to determine success/failure/reboot.
+# Exit with the final aggregated code. Intune uses this to determine success/failure/reboot.
 # 0 = Success
 # 3010 = Success, reboot required
 # Other non-zero = Failure
-exit $exitCode
+Write-Host "[+] All installations are complete. Final exit code for Intune is: $finalExitCode"
+exit $finalExitCode
