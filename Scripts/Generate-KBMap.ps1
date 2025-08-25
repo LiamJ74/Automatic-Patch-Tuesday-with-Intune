@@ -24,6 +24,10 @@ param(
     [string]$Description = "Universal KB package for Patch Tuesday. Installs the correct MSU based on build.",
     [string]$Publisher = "Automated Script",
 
+    # --- Execution Mode Parameter ---
+    [ValidateSet('OnDemand', 'Prepackage')]
+    [string]$DownloadMethod = 'OnDemand',
+
     # --- Assignment Parameters (Optional) ---
     [string[]]$GroupTest,
     [string[]]$GroupRing1,
@@ -181,7 +185,6 @@ function Publish-NewOrUpdateIntuneApp {
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BaseDir = Resolve-Path -Path (Join-Path $PSScriptRoot "..")
 $ToolsDir = Join-Path $BaseDir "Tools"
-$OutputFolder = Join-Path $BaseDir "KBs"
 $CsvFile = Join-Path $BaseDir "kbmap.csv"
 
 $TargetBuilds = @(
@@ -195,9 +198,17 @@ $TargetBuilds = @(
     @{ OS = "Windows 11"; Build = "26100"; Arch = "arm64" }  # 24H2
 )
 
-if (-not (Test-Path $OutputFolder)) { New-Item -ItemType Directory -Path $OutputFolder | Out-Null }
-
 $KBMap = @()
+
+# --- Logic Branch based on Download Method ---
+if ($DownloadMethod -eq 'Prepackage') {
+    Write-Host "[i] Using 'Prepackage' method. KBs will be downloaded locally."
+    $OutputFolder = Join-Path $BaseDir "KBs"
+    if (-not (Test-Path $OutputFolder)) { New-Item -ItemType Directory -Path $OutputFolder | Out-Null }
+} else {
+    Write-Host "[i] Using 'OnDemand' method. Only metadata will be collected."
+}
+
 foreach ($target in $TargetBuilds) {
     $os = $target.OS; $build = $target.Build; $arch = $target.Arch
     $searchTerm = "Cumulative Update for $($os) Version $($build.Substring(0,2))H2 for $($arch)-based Systems"
@@ -215,51 +226,48 @@ foreach ($target in $TargetBuilds) {
             continue
         }
 
-        $fileName = "$($kbNumber).msu"
-        $destination = Join-Path $OutputFolder $fileName
-        if (-not (Test-Path $destination)) {
-            Write-Host "[i] Downloading $($update.Title)..."
-            Save-MSCatalogUpdate -Update $update -Destination $OutputFolder
-            Start-Sleep -Seconds 2
-            $downloadedFile = Get-ChildItem -Path $OutputFolder -Filter "*$kbNumber*.msu" | Select-Object -First 1
-            if ($downloadedFile) {
-                if ($downloadedFile.Name -ne $fileName){
-                    Rename-Item -Path $downloadedFile.FullName -NewName $fileName -Force -ErrorAction Stop
-                }
-            } else {
-                throw "[!] Could not find the downloaded file for KB $kbNumber in $OutputFolder."
-            }
-        }
-        # --- New UBR Extraction Logic ---
+        # --- UBR Extraction Logic (common to both modes) ---
         $ubr = $null
-        # The support URL is the most reliable place to find the OS Build.Revision number (UBR)
         $supportUrl = "https://support.microsoft.com/help/$kbNumber"
         Write-Host "[i] Checking support page for UBR: $supportUrl"
         try {
-            # We use Invoke-WebRequest to get the content of the KB article page.
             $pageContent = Invoke-WebRequest -Uri $supportUrl -UseBasicParsing -ErrorAction Stop
-
-            # The regex is designed to find the specific build number (e.g., 22631) in the page content,
-            # and then capture the revision number (UBR) that follows it after a period.
-            # This is more robust than looking for "OS Build..." which can change.
             if ($pageContent.Content -match "$($build)\.(\d+)") {
                 $ubr = $Matches[1]
                 Write-Host "[+] Found UBR: $ubr for Build $build"
             } else {
-                Write-Warning "[!] Could not find a matching UBR for build $build on page $supportUrl. The page content may have an unexpected format."
+                Write-Warning "[!] Could not find a matching UBR for build $build on page $supportUrl."
             }
         } catch {
             Write-Warning "[!] Failed to download or parse support page $supportUrl. Error: $($_.Exception.Message)"
         }
 
-        # If we couldn't find a UBR, we cannot proceed with this update as it won't work with the new detection script.
         if (-not $ubr) {
             Write-Warning "[!] UBR not found for KB$kbNumber. This update will be skipped."
-            continue # Move to the next item in the loop.
+            continue
         }
-        # --- End UBR Extraction Logic ---
 
-        $KBMap += [PSCustomObject]@{ OS = $os; Build = $build; Arch = $arch; UBR = $ubr; KB = $kbNumber; FileName = "KBs\$fileName" }
+        # --- Mode-specific logic ---
+        if ($DownloadMethod -eq 'Prepackage') {
+            $fileName = "$($kbNumber).msu"
+            $destination = Join-Path $OutputFolder $fileName
+            if (-not (Test-Path $destination)) {
+                Write-Host "[i] Downloading $($update.Title)..."
+                Save-MSCatalogUpdate -Update $update -Destination $OutputFolder
+                Start-Sleep -Seconds 2
+                $downloadedFile = Get-ChildItem -Path $OutputFolder -Filter "*$kbNumber*.msu" | Select-Object -First 1
+                if ($downloadedFile) {
+                    if ($downloadedFile.Name -ne $fileName){
+                        Rename-Item -Path $downloadedFile.FullName -NewName $fileName -Force -ErrorAction Stop
+                    }
+                } else {
+                    throw "[!] Could not find the downloaded file for KB $kbNumber in $OutputFolder."
+                }
+            }
+            $KBMap += [PSCustomObject]@{ OS = $os; Build = $build; Arch = $arch; UBR = $ubr; KB = $kbNumber; FileName = "KBs\$fileName" }
+        } else { # OnDemand
+            $KBMap += [PSCustomObject]@{ OS = $os; Build = $build; Arch = $arch; UBR = $ubr; KB = $kbNumber; Title = $update.Title }
+        }
     }
 }
 
