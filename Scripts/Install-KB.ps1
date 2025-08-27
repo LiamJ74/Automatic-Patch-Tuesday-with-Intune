@@ -1,4 +1,3 @@
-Start-Transcript -Path "C:\Windows\Temp\KBInstaller-debug.log" -Append
 <#
 .SYNOPSIS
     Installs the correct KB according to the OS build.
@@ -26,14 +25,17 @@ try {
     # Use -like for broader compatibility
     $osName = if ($osInfo.Caption -like "*Windows 10*") { "Windows 10" } else { "Windows 11" }
 
-    # Determine system architecture to find the correct entry in the map.
-    $arch = $env:PROCESSOR_ARCHITECTURE
-    if ($arch -eq 'AMD64') {
+    # Determine OS architecture, accounting for 32-bit processes on 64-bit systems.
+    $nativeArch = $env:PROCESSOR_ARCHITEW6432
+    $processArch = $env:PROCESSOR_ARCHITECTURE
+    $finalArch = if ($nativeArch) { $nativeArch } else { $processArch }
+
+    if ($finalArch -eq 'AMD64') {
         $mappedArch = 'x64'
-    } elseif ($arch -eq 'ARM64') {
+    } elseif ($finalArch -eq 'ARM64') {
         $mappedArch = 'arm64'
     } else {
-        Write-Error "Installation failed: Unsupported processor architecture '$arch'."
+        Write-Error "Installation failed: Unsupported OS architecture '$finalArch'."
         exit 1
     }
 }
@@ -135,7 +137,6 @@ elseif ($csvHeaders -contains 'Title') {
             Write-Host "[i] Cleaning up temporary directory..."
             Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
         }
-        Stop-Transcript
     }
 }
 else {
@@ -144,10 +145,5 @@ else {
 }
 
 # --- Final Exit Code ---
-if ($finalExitCode -eq 3010) {
-    Write-Host "[+] Installation requires reboot (3010). Mapping to exit code 0 for Intune as per troubleshooting instructions."
-    exit 0
-}
-
 Write-Host "[+] Process complete. Final exit code for Intune is: $finalExitCode"
 exit $finalExitCode

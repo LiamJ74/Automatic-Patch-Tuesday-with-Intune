@@ -29,14 +29,17 @@ try {
     $currentBuild = $osInfo.BuildNumber
     $currentUBR = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -Name "UBR" -ErrorAction Stop).UBR
 
-    # Determine system architecture to find the correct entry in the map.
-    $arch = $env:PROCESSOR_ARCHITECTURE
-    if ($arch -eq 'AMD64') {
+    # Determine OS architecture, accounting for 32-bit processes on 64-bit systems.
+    $nativeArch = $env:PROCESSOR_ARCHITEW6432
+    $processArch = $env:PROCESSOR_ARCHITECTURE
+    $finalArch = if ($nativeArch) { $nativeArch } else { $processArch }
+
+    if ($finalArch -eq 'AMD64') {
         $mappedArch = 'x64'
-    } elseif ($arch -eq 'ARM64') {
+    } elseif ($finalArch -eq 'ARM64') {
         $mappedArch = 'arm64'
     } else {
-        Write-Error "Detection failed: Unsupported processor architecture '$arch'."
+        Write-Error "Detection failed: Unsupported OS architecture '$finalArch'."
         exit 1
     }
 }
