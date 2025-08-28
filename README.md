@@ -1,4 +1,4 @@
-#WIP
+# WIP
 
 # ✨ Fully Automated Patch Tuesday Deployment for Intune ✨
 
